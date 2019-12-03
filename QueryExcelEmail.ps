@@ -1,0 +1,246 @@
+#Global variables
+#Working directories
+$Script:RootDir = "D:\TFS\PowerShell\ExcelAndEmail\"
+$Script:ExcelDir = $RootDir + "Spreadsheets\"
+$Script:WorkDir = $RootDir + "Work\"
+
+$script:ASEConnStr = "{CONNECTION STRING}"
+$script:ASEConn
+$script:ASECmd
+
+$script:DataTable = New-Object System.Data.DataTable
+$script:DDKFilePath = "C:\Program Files\DataDirect\Connect for ADO.NET 3.3\"
+$script:DDKDriver = "DDTek.Sybase.dll"
+$script:DDKLicense = "DDTek.lic"
+$DbDriver = $DDKFilePath + $DDKDriver
+
+
+#============================================================================
+# Create all db connections
+#============================================================================
+# function OpenDbConnection {
+#     Write-Host("==>OpenDbConnection");
+
+#     # ASE 12
+#     try {
+
+#         [reflection.assembly]::loadfile($DbDriver);
+
+#         # Open a connection to DDTek.Sybase
+#         $ASEConn = New-Object DDTek.Sybase.SybaseConnection
+#         Write-Host "==>SybaseConn"
+#         $ASEConn.ConnectionString = $ASEConnStr
+#         Write-Host($ASEConnStr);
+#         $ASEConn.Open()
+
+#         $script:ASECmd = $ASEConn.CreateCommand()
+#         $script:ASECmd.CommandTimeout = 300
+#     }
+#     catch [Exception] {
+#         Write-Host "Error connecting to sybase 12.  Check details on next line."
+#         Write-Host $_.Exception.Message
+#         Write-Host "I was using connection string..."
+#         Write-Host $ASEConnStr
+#         return -1
+#     }
+    
+#     return 1
+# }
+
+function buildExcel($Dataset) {
+
+    try {
+        # Create directory for finished spreadsheets, or clean out
+        if (!(Test-Path $ExcelDir)) {
+            New-Item -ItemType directory -Path $ExcelDir
+        }
+        else {
+            $AllContents = $ExcelDir + "\*"
+            Remove-Item $AllContents -Recurse -Force
+        }
+
+        # Create work directory, or clean out
+        if (!(Test-Path $WorkDir)) {
+            New-Item -ItemType directory -Path $WorkDir
+        }
+        else {
+            $AllContents = $WorkDir + "\*"
+            Remove-Item $AllContents -Recurse -Force
+        }
+        #Begin Excel office automation
+        $excel = New-Object -ComObject Excel.Application 
+        $excel.Visible = $false
+        $workbook = $excel.Workbooks.add();
+        #create a worksheet object
+        $worksheet = $workbook.ActiveSheet;
+        $cells = $worksheet.Cells;
+
+
+        # For each table in the DataSet, print the row values.
+        $RowIndex = 1
+        $ColumnIndex = 1
+       
+        $rowRange = 1
+        $colRange = 1
+
+        $table = $Dataset.Tables[0]
+        Write-Host "-------------------";       
+        #Add a header row to excel, I broke it out for teaching reasons
+        foreach ($tmpDataColm in $table.Columns) {
+            Write-Host $tmpDataColm;
+            #expression.Item (RowIndex, ColumnIndex)
+            #format header row
+          
+            $cells.item($RowIndex, $ColumnIndex).font.bold = $True
+            $cells.item($RowIndex, $ColumnIndex).font.bold = $True
+            $cells.item($RowIndex, $ColumnIndex).font.size = 16
+            $cells.item($RowIndex, $ColumnIndex).font.size = 16
+
+
+            $cells.item($RowIndex, $ColumnIndex) = $tmpDataColm.Caption
+            $ColumnIndex++
+            
+        }
+        
+        #Add a row for each new loop and then add the cell values
+        $RowIndex = 2
+        $ColumnIndex = 1
+        foreach ($tmpDataRow in $table) {
+            #Write-Host $tmpDataRow.Item(0);
+            foreach ($item in $tmpDataRow.ItemArray) {
+                Write-Host $item;
+                # expression.Item (RowIndex, ColumnIndex)
+                $cells.item($RowIndex, $ColumnIndex) = $item
+                $ColumnIndex++
+            }
+            $ColumnIndex = 1  #resrt columns for next row
+            $RowIndex++
+
+        }
+   
+        #Code to populate excel
+        $ExcelXLSX = $ExcelDir + "Excel_Email_.xlsx"; #We clear the directory so no need for a unique ID
+        Write-Host  $ExcelXLSX;
+        $workbook.SaveAs($ExcelXLSX);
+        $workbook.Close();
+        $excel.Quit();
+        #Cleanup after excel interop
+        $p = Get-Process -Name "excel"
+        Stop-Process -InputObject $p
+        Get-Process | Where-Object { $_.HasExited }
+      
+    }
+    catch [System.Exception] {
+        Write-Host " "
+        Write-Host $_.Exception.Message
+        Write-Host " "
+        Write-Host $SqlToRun
+        Write-Host " "
+        Write-Host $ASEConnStr
+        Write-Host " "
+        return -1
+    }
+   
+
+}
+
+#============================================================================
+# Get DataSet via Sybase15 
+#============================================================================
+function Invoke-ISqlForSybase {
+
+    try {
+        [reflection.assembly]::loadfile($DbDriver);
+
+        #Go ahead and get intial set as desc
+        $SqlToRun = "select top 5 ctr_id as [center id],ctr_name as [center name],ctr_shname as [center short name]  from dbo.center order by [center short name] Desc"
+    
+        $dataset = New-Object System.Data.DataSet
+
+        $DbConn = New-Object DDTek.Sybase.SybaseConnection
+        $DbConn.ConnectionString = $ASEConnStr
+        $DbConn.Open()
+        $DBCmd = $DbConn.CreateCommand()
+        $DbCmd.CommandTimeout = 300
+        $DBCmd.CommandText = $SqlToRun 
+
+        $adapter = New-Object DDTek.Sybase.SybaseDataAdapter  $DBCmd
+        $adapter.SelectCommand.Connection = $DbConn
+        $adapter.Fill($DataSet) | Out-Null
+        $DBConn.Close()
+        $DBConn.Dispose()
+
+        return $DataSet
+
+      
+    }
+    catch [System.Exception] {
+        Write-Host " "
+        Write-Host $_.Exception.Message
+        Write-Host " "
+        Write-Host $SqlToRun
+        Write-Host " "
+        Write-Host $ASEConnStr
+        Write-Host " "
+        return -1
+    }
+}
+
+
+
+#============================================================================
+# Email status of run
+#============================================================================
+function SendEmail {
+
+    $SubjectLine = "Attachment Test "
+    $files = Get-ChildItem $ExcelDir
+    $EmailTo = ""
+    # Create Message Object 
+    $msg = New-Object System.Net.Mail.MailMessage  
+    $msg.From = "no-reply@???" 
+    $msg.Subject = $SubjectLine
+
+    $msg.To.add($EmailTo)  
+
+    $msg.Body = "A Message " 
+
+    foreach ($file in $files) {
+        $att = New-Object System.Net.Mail.Attachment -ArgumentList  $file.FullName
+        $msg.Attachments.Add($att)
+    }
+    
+    # Create SMTP Client object to get ready to send message 
+    $portNo = "?"
+    $hostNo = "smtp.???.org"    
+    $client = New-Object System.Net.Mail.SmtpClient $hostNo
+    $client.Port = $portNo
+
+    # Send the message out.
+    try { 
+        $client.Send($msg)    
+    } 
+    catch { 
+        Write-Host "Exception caught in SendEmail: {0}" -f $Error.ToString() 
+    } 
+}
+
+
+
+#============================================================================
+# Run the process
+#============================================================================
+function RunIt {
+    $cls;    
+    Write-Output "====================================================="
+    Write-Output "====================================================="
+    
+    $rawData = Invoke-ISqlForSybase
+    buildExcel($rawData);
+    SendEmail
+    
+}
+
+
+#Execute script
+RunIt
