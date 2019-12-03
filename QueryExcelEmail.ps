@@ -153,7 +153,7 @@ function Invoke-ISqlForSybase {
         [reflection.assembly]::loadfile($DbDriver);
 
         #Go ahead and get intial set as desc
-        $SqlToRun = "select top 5 ctr_id as [center id],ctr_name as [center name],ctr_shname as [center short name]  from dbo.center order by [center short name] Desc"
+        $SqlToRun = "select top 5 ctr_id as [center id],ctr_name as [center name],ctr_shname as [center short name]  {add your sql, I left the intial part so the excel code would make more sense"
     
         $dataset = New-Object System.Data.DataSet
 
