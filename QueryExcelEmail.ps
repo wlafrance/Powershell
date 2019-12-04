@@ -47,6 +47,35 @@ $DbDriver = $DDKFilePath + $DDKDriver
 #     return 1
 # }
 
+
+
+#=================================================================================
+# Convert columns Interger values to Letters for excel column range selections
+#=================================================================================
+# 1 based values, if your array is not zero based subtract 1 from index first
+function ExcelColumnIndexToName {
+    param(
+        [Parameter(Mandatory = $true)] [int] $index
+    )
+		
+    [string]$range = [string]::Empty;
+    if ($Index -lt 0 ) { return $range; }
+
+    [int]$a = 26;
+    $mfr = [Math]::Floor([Math]::Log(($Index) * ($a - 1) / $a + 1, $a))
+    [int]$x = [int]$mfr;
+    $Index -= [int]([Math]::Pow($a, $x) - 1) * $a / ($a - 1);
+    for ([int] $i = $x + 1; $Index + $i -gt 0; $i--) {
+        $range = ([char](65 + $Index % $a)).ToString() + $range;
+        $Index /= $a;
+    }
+    return $range;
+}
+
+
+
+
+
 function buildExcel($Dataset) {
 
     try {
@@ -86,8 +115,19 @@ function buildExcel($Dataset) {
         $table = $Dataset.Tables[0]
         Write-Host "-------------------";       
         #Add a header row to excel, I broke it out for teaching reasons
+        #[int]$columns = $table.Columns.Count;
+
         foreach ($tmpDataColm in $table.Columns) {
-            Write-Host $tmpDataColm;
+
+            #Write-Host $tmpDataColm;
+            #Write-Host($table.Columns.IndexOf($tmpDataColm));
+            $colIndex = $table.Columns.IndexOf($tmpDataColm);
+            #Write-Host($colIndex);
+            $colLetter = ExcelColumnIndexToName($colIndex);
+            #$excelCol = ExcelColumnIndexToName($table.Columns.IndexOf($tmpDataColm));
+            Write-Host("Table Column index value: $colIndex to Excel letter: " + $colLetter );
+
+
             #expression.Item (RowIndex, ColumnIndex)
             #format header row
           
@@ -98,6 +138,7 @@ function buildExcel($Dataset) {
 
 
             $cells.item($RowIndex, $ColumnIndex) = $tmpDataColm.Caption
+            Write-Host "Column Alias name: $tmpDataColm";
             $ColumnIndex++
             
         }
@@ -108,7 +149,7 @@ function buildExcel($Dataset) {
         foreach ($tmpDataRow in $table) {
             #Write-Host $tmpDataRow.Item(0);
             foreach ($item in $tmpDataRow.ItemArray) {
-                Write-Host $item;
+                Write-Host "Column value: $item";
                 # expression.Item (RowIndex, ColumnIndex)
                 $cells.item($RowIndex, $ColumnIndex) = $item
                 $ColumnIndex++
@@ -120,7 +161,7 @@ function buildExcel($Dataset) {
    
         #Code to populate excel
         $ExcelXLSX = $ExcelDir + "Excel_Email_.xlsx"; #We clear the directory so no need for a unique ID
-        Write-Host  $ExcelXLSX;
+        #Write-Host  $ExcelXLSX;
         $workbook.SaveAs($ExcelXLSX);
         $workbook.Close();
         $excel.Quit();
@@ -143,7 +184,6 @@ function buildExcel($Dataset) {
    
 
 }
-
 #============================================================================
 # Get DataSet via Sybase15 
 #============================================================================
