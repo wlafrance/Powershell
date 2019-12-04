@@ -1,0 +1,22 @@
+#=================================================================================
+# Convert columns Interger values to Letters for excel column range selections
+#=================================================================================
+# 1 based values, if your array is not zero based subtract 1 from index first
+function ColumnIndexToExcelColmName {
+    param(
+        [Parameter(Mandatory = $true)] [int] $index
+    )
+		
+    [string]$range = [string]::Empty;
+    if ($Index -lt 0 ) { return $range; }
+
+    [int]$a = 26;
+    $mfr = [Math]::Floor([Math]::Log(($Index) * ($a - 1) / $a + 1, $a))
+    [int]$x = [int]$mfr;
+    $Index -= [int]([Math]::Pow($a, $x) - 1) * $a / ($a - 1);
+    for ([int] $i = $x + 1; $Index + $i -gt 0; $i--) {
+        $range = ([char](65 + $Index % $a)).ToString() + $range;
+        $Index /= $a;
+    }
+    return $range;
+}
